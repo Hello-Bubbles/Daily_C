@@ -6,8 +6,8 @@ int ascii_int(int num)
 {
     if (num >= '0' && num <= '9') return num - '0';
     if (num >= 'A' && num <= 'F') return num - 'A' + 10;
-    if (num >= 'a' && num <= 'f') return num - 'a' + 10;   // lowercase support
-    return -1;                                              // invalid -> error
+    if (num >= 'a' && num <= 'f') return num - 'a' + 10;   
+    return -1;                                              
 }
 
 //  skip whitespace safely
@@ -23,7 +23,7 @@ int next_hex_char(FILE *fp)
 
 int whole_num(int first_char, FILE *fp)
 {
-    // FIX#1/#5: handle EOF safely
+    //  handle EOF safely
     if (first_char == EOF) return EOF;
 
     int ch = next_hex_char(fp);
@@ -32,7 +32,7 @@ int whole_num(int first_char, FILE *fp)
     int hi = ascii_int(first_char);
     int lo = ascii_int(ch);
 
-    // FIX#2: stop on invalid hex digit
+    //  stop on invalid hex digit
     if (hi < 0 || lo < 0) return EOF;
 
     return (hi << 4) | lo;
@@ -40,12 +40,10 @@ int whole_num(int first_char, FILE *fp)
 
 int main()
 {
-    FILE *fp1, *fp2;
+    FILE *fp1;
     int len, bytes;
     int up_nib, lo_nib;
-
-    fp1 = fopen("encoded.txt", "r");
-    fp2 = fopen("decoded.txt", "w");
+    fp1 = fopen("encoded.txt", "r");    
     if (fp1 == NULL) {
         printf("files doesn't exist");
         return -1;
@@ -54,7 +52,7 @@ int main()
     // read first code byte
     len = whole_num(next_hex_char(fp1), fp1);
 
-    while (len != EOF)                       //  loop ends cleanly at EOF
+    while (len != EOF)                      
     {
         // ignore stray delimiters if present
         if (len == 0x00) {
@@ -86,7 +84,7 @@ int main()
         // normal block: copy (len-1) data bytes
         for (int i = 0; i < (len - 1); i++) {
             bytes = whole_num(next_hex_char(fp1), fp1);
-            if (bytes == EOF || bytes == 0x00) { len = EOF; break; } // malformed/EOF
+            if (bytes == EOF || bytes == 0x00) { len = EOF; break; } 
             up_nib = (bytes >> 4) & 0x0F;
             lo_nib = bytes & 0x0F;
             printf("%x%x", up_nib, lo_nib);
