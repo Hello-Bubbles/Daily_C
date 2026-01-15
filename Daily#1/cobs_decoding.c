@@ -1,75 +1,109 @@
-#include<stdio.h>
-#include<stdint.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <ctype.h>
 
-
-
-uint16_t ascii_int(uint16_t num)
+int ascii_int(int num)
 {
-    if(num>47 && num<58)
-       return num-48;
-    if(num>96 &&num<103)
-       return num-87;
-
+    if (num >= '0' && num <= '9') return num - '0';
+    if (num >= 'A' && num <= 'F') return num - 'A' + 10;
+    if (num >= 'a' && num <= 'f') return num - 'a' + 10;   // lowercase support
+    return -1;                                              // invalid -> error
 }
-int whole_num(int16_t bytes,FILE *fp)
+
+//  skip whitespace safely
+int next_hex_char(FILE *fp)
 {
-   int16_t ch;
-   ch= getc(fp);
-      bytes=(ascii_int((uint16_t)bytes)<<4)|(ascii_int((uint16_t)ch));
-   return bytes;
+    int c;
+    do {
+        c = fgetc(fp);
+        if (c == EOF) return EOF;
+    } while (isspace((unsigned char)c));
+    return c;
+}
+
+int whole_num(int first_char, FILE *fp)
+{
+    // FIX#1/#5: handle EOF safely
+    if (first_char == EOF) return EOF;
+
+    int ch = next_hex_char(fp);
+    if (ch == EOF) return EOF;
+
+    int hi = ascii_int(first_char);
+    int lo = ascii_int(ch);
+
+    // FIX#2: stop on invalid hex digit
+    if (hi < 0 || lo < 0) return EOF;
+
+    return (hi << 4) | lo;
 }
 
 int main()
-{ 
+{
+    FILE *fp1, *fp2;
+    int len, bytes;
+    int up_nib, lo_nib;
 
-    FILE *fp1,*fp2;
-    int16_t length,bytes;
-    fp1=fopen("encoded.txt","r");
-    fp2=fopen("decoded.txt","w");
-    if(fp1==NULL)
-     {
-
+    fp1 = fopen("encoded.txt", "r");
+    fp2 = fopen("decoded.txt", "w");
+    if (fp1 == NULL) {
         printf("files doesn't exist");
         return -1;
-      }
+    }
 
-      length=getc(fp1);
-    while(length!=EOF && length !='\n')
+    // read first code byte
+    len = whole_num(next_hex_char(fp1), fp1);
+
+    while (len != EOF)                       //  loop ends cleanly at EOF
     {
-         length=whole_num(length,fp1);
-         printf("length:%d\n",length);
-        
-         if(length>255)
-               printf(" length of frame is greater than 255 cannot process");
-         if(length!=0x01)
-         {
-              
-               
-        
-        length=(length)*2;
-         printf("updated length:%d\n",length);
-        if(length!=0)
-        {
-       while((length--)!=2 )
-        { 
-        
-        bytes=getc(fp1);
-        fputc(bytes,fp2);
-       //bytes= whole_num(bytes,fp1);
-        printf("bytes:%d \n", bytes); 
-        
-        
-         }  
-         }
-         }
-         else
-         {
-          fputc(48,fp2);
-           fputc(48,fp2);
-          
-         }
-        length=getc(fp1);
-        
-        
-     }
+        // ignore stray delimiters if present
+        if (len == 0x00) {
+            len = whole_num(next_hex_char(fp1), fp1);
+            continue;
+        }
+
+        //  handle 0xFF blocks too (copy 254, no implied 00)
+        if (len == 0xFF) {
+            for (int i = 0; i < 254; i++) {
+                bytes = whole_num(next_hex_char(fp1), fp1);
+                if (bytes == EOF || bytes == 0x00) { len = EOF; break; } // malformed/EOF
+                up_nib = (bytes >> 4) & 0x0F;
+                lo_nib = bytes & 0x0F;
+                printf("%x%x", up_nib, lo_nib);
+            }
+
+            // read next (delimiter or next code)
+            bytes = whole_num(next_hex_char(fp1), fp1);
+            if (bytes == EOF) break;
+            if (bytes == 0x00) {
+                len = whole_num(next_hex_char(fp1), fp1);
+            } else {
+                len = bytes; // continue with next code (no "00" inserted for FF)
+            }
+            continue;
+        }
+
+        // normal block: copy (len-1) data bytes
+        for (int i = 0; i < (len - 1); i++) {
+            bytes = whole_num(next_hex_char(fp1), fp1);
+            if (bytes == EOF || bytes == 0x00) { len = EOF; break; } // malformed/EOF
+            up_nib = (bytes >> 4) & 0x0F;
+            lo_nib = bytes & 0x0F;
+            printf("%x%x", up_nib, lo_nib);
+        }
+        if (len == EOF) break;
+
+        // now read the next encoded byte: delimiter OR next code
+        bytes = whole_num(next_hex_char(fp1), fp1);
+        if (bytes == EOF) break;
+
+        if (bytes == 0x00) {
+            // end-of-frame: do NOT insert implied 00
+            len = whole_num(next_hex_char(fp1), fp1);       //  safe after delimiter
+        } else {
+            // frame continues: insert implied 00 (because len != 0xFF here)
+            printf("00");
+            len = bytes;  // next code
+        }
+    }
 }
